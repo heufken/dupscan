@@ -1,0 +1,288 @@
+/* ============================================================
+   Design tokens — three layers: primitive → semantic → component
+   Colors are space-separated HSL so Tailwind opacity modifiers
+   work: bg-primary/50 → hsl(var(--primary) / 0.5)
+   ============================================================ */
+
+/* === PRIMITIVES (raw values, no meaning) === */
+:root {
+  /* slate scale */
+  --slate-50: 210 40% 98%;
+  --slate-100: 210 40% 96%;
+  --slate-200: 214 32% 91%;
+  --slate-300: 213 27% 84%;
+  --slate-400: 215 20% 65%;
+  --slate-500: 215 16% 47%;
+  --slate-600: 215 19% 35%;
+  --slate-700: 215 25% 27%;
+  --slate-800: 217 33% 17%;
+  --slate-900: 222 47% 11%;
+  --slate-950: 222 47% 5%;
+
+  /* blue */
+  --blue-300: 213 97% 87%;
+  --blue-500: 217 91% 60%;
+  --blue-600: 221 83% 53%;
+  --blue-700: 224 76% 48%;
+
+  /* status hues */
+  --green-500: 142 71% 45%;
+  --green-600: 142 76% 36%;
+  --amber-500: 38 92% 50%;
+  --red-500: 0 84% 60%;
+  --red-600: 0 72% 51%;
+
+  /* spacing — 4px base (Tailwind's default already matches; do not override) */
+  /* radius */
+  --radius-base: 0.5rem;
+
+  /* shadow */
+  --shadow-color: 222 47% 11%;
+}
+
+/* === SEMANTIC (purpose aliases — the only layer themes change) === */
+:root {
+  --background: var(--slate-50);
+  --foreground: var(--slate-900);
+
+  --card: 0 0% 100%;
+  --card-foreground: var(--slate-900);
+
+  --primary: var(--blue-600);
+  --primary-foreground: 0 0% 100%;
+  --primary-hover: var(--blue-700);
+
+  --secondary: var(--slate-100);
+  --secondary-foreground: var(--slate-900);
+
+  --muted: var(--slate-100);
+  --muted-foreground: var(--slate-500);
+
+  --accent: var(--slate-100);
+  --accent-foreground: var(--slate-900);
+
+  --success: var(--green-600);
+  --success-foreground: 0 0% 100%;
+  --warning: var(--amber-500);
+  --warning-foreground: var(--slate-900);
+  --destructive: var(--red-600);
+  --destructive-foreground: 0 0% 100%;
+
+  --border: var(--slate-200);
+  --input: var(--slate-300);
+  --ring: var(--blue-500);
+
+  --radius: var(--radius-base);
+}
+
+.dark {
+  --background: var(--slate-950);
+  --foreground: var(--slate-50);
+
+  --card: var(--slate-900);
+  --card-foreground: var(--slate-50);
+
+  --primary: var(--blue-500);
+  --primary-hover: var(--blue-300);
+
+  --secondary: var(--slate-800);
+  --secondary-foreground: var(--slate-50);
+
+  --muted: var(--slate-800);
+  --muted-foreground: var(--slate-400);
+
+  --accent: var(--slate-800);
+  --accent-foreground: var(--slate-50);
+
+  --destructive: var(--red-500);
+
+  --border: var(--slate-800);
+  --input: var(--slate-700);
+  --ring: var(--blue-500);
+
+  --shadow-color: 0 0% 0%;
+}
+
+/* === COMPONENT (per-component, built from semantic) === */
+:root {
+  --btn-radius: var(--radius);
+  --input-radius: var(--radius);
+  --card-radius: calc(var(--radius) + 4px);
+  --ring-width: 2px;
+  --opacity-disabled: 0.5;
+}
+
+/* ============================================================
+   Component classes — plain CSS (no build step needed).
+   Tailwind utilities stay available alongside.
+   ============================================================ */
+@layer components { }
+
+/* Buttons */
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem;
+  height: 2.5rem; padding: 0 1rem;
+  border-radius: var(--btn-radius);
+  font-size: 0.875rem; font-weight: 500; line-height: 1;
+  border: 1px solid transparent;
+  cursor: pointer; user-select: none; white-space: nowrap;
+  transition: color 150ms ease-in-out, background-color 150ms ease-in-out,
+              border-color 150ms ease-in-out, box-shadow 150ms ease-in-out,
+              transform 160ms ease-out;
+}
+.btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px hsl(var(--background)), 0 0 0 4px hsl(var(--ring));
+}
+.btn:active { transform: scale(0.97); }
+.btn:disabled { opacity: var(--opacity-disabled); pointer-events: none; }
+
+.btn-primary { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
+.btn-primary:hover { background: hsl(var(--primary-hover)); }
+.btn-primary:active { filter: brightness(0.92); }
+
+.btn-secondary { background: hsl(var(--secondary)); color: hsl(var(--secondary-foreground)); }
+.btn-secondary:hover { background: hsl(var(--accent)); }
+
+.btn-outline { border-color: hsl(var(--input)); background: transparent; color: hsl(var(--foreground)); }
+.btn-outline:hover { background: hsl(var(--accent)); }
+
+.btn-ghost { background: transparent; color: hsl(var(--foreground)); }
+.btn-ghost:hover { background: hsl(var(--accent)); }
+
+.btn-destructive { background: hsl(var(--destructive)); color: hsl(var(--destructive-foreground)); }
+.btn-destructive:hover { filter: brightness(1.1); }
+.btn-destructive:active { filter: brightness(0.92); }
+
+.btn-sm { height: 2rem; padding: 0 0.75rem; font-size: 0.8125rem; }
+.btn-lg { height: 3rem; padding: 0 1.5rem; font-size: 1rem; }
+
+/* Inputs */
+.input {
+  display: flex; width: 100%;
+  height: 2.5rem; padding: 0 0.75rem;
+  border-radius: var(--input-radius);
+  border: 1px solid hsl(var(--input));
+  background: hsl(var(--card)); color: hsl(var(--foreground));
+  font-size: 0.875rem;
+  transition: border-color 150ms ease-in-out, box-shadow 150ms ease-in-out;
+}
+.input::placeholder { color: hsl(var(--muted-foreground)); }
+.input:hover { border-color: hsl(var(--muted-foreground)); }
+.input:focus-visible {
+  outline: none;
+  border-color: hsl(var(--ring));
+  box-shadow: 0 0 0 3px hsl(var(--ring) / 0.2);
+}
+.input:disabled { background: hsl(var(--muted)); cursor: not-allowed; opacity: var(--opacity-disabled); }
+.input[aria-invalid="true"] { border-color: hsl(var(--destructive)); }
+.input[aria-invalid="true"]:focus-visible { box-shadow: 0 0 0 3px hsl(var(--destructive) / 0.2); }
+
+/* Card */
+.card {
+  background: hsl(var(--card)); color: hsl(var(--card-foreground));
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--card-radius);
+}
+.card-hover { transition: box-shadow 200ms ease-out, transform 200ms ease-out; }
+.card-hover:hover { box-shadow: 0 4px 12px hsl(var(--shadow-color) / 0.1); }
+
+/* Badge */
+.badge {
+  display: inline-flex; align-items: center;
+  height: 1.5rem; padding: 0 0.625rem;
+  border-radius: 9999px;
+  font-size: 0.75rem; font-weight: 500;
+}
+.badge-primary { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
+.badge-secondary { background: hsl(var(--secondary)); color: hsl(var(--secondary-foreground)); }
+.badge-success { background: hsl(var(--success)); color: hsl(var(--success-foreground)); }
+.badge-warning { background: hsl(var(--warning)); color: hsl(var(--warning-foreground)); }
+.badge-destructive { background: hsl(var(--destructive)); color: hsl(var(--destructive-foreground)); }
+.badge-outline { border: 1px solid hsl(var(--border)); color: hsl(var(--foreground)); }
+
+/* Alert */
+.alert {
+  display: flex; gap: 0.75rem;
+  padding: 0.875rem 1rem;
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--card-radius);
+  font-size: 0.875rem;
+}
+.alert-info { background: hsl(var(--primary) / 0.08); border-color: hsl(var(--primary) / 0.3); }
+.alert-success { background: hsl(var(--success) / 0.1); border-color: hsl(var(--success) / 0.35); }
+.alert-warning { background: hsl(var(--warning) / 0.12); border-color: hsl(var(--warning) / 0.4); }
+.alert-destructive { background: hsl(var(--destructive) / 0.1); border-color: hsl(var(--destructive) / 0.35); }
+
+/* Table */
+.table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
+.table th {
+  text-align: left; padding: 0.75rem 1rem;
+  font-weight: 500; color: hsl(var(--muted-foreground));
+  border-bottom: 1px solid hsl(var(--border));
+}
+.table td { padding: 0.75rem 1rem; border-bottom: 1px solid hsl(var(--border)); }
+.table tbody tr:hover { background: hsl(var(--muted) / 0.6); }
+.table tbody tr[data-selected="true"] { background: hsl(var(--primary) / 0.1); }
+
+/* Progress bar */
+.progress {
+  height: 4px; width: 100%;
+  border-radius: 9999px;
+  background: hsl(var(--muted));
+  overflow: hidden;
+}
+.progress-bar {
+  height: 100%;
+  border-radius: inherit;
+  background: hsl(var(--primary));
+  transition: width 200ms ease-out;
+}
+.progress-bar[data-indeterminate="true"] {
+  width: 40%;
+  animation: progress-indeterminate 1.2s ease-in-out infinite;
+}
+@keyframes progress-indeterminate {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(250%); }
+}
+
+/* Panel: anchored dropdown/overlay content */
+.panel {
+  position: absolute; z-index: 50;
+  background: hsl(var(--card));
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--card-radius);
+  box-shadow: 0 4px 12px hsl(var(--shadow-color) / 0.1), 0 8px 24px hsl(var(--shadow-color) / 0.1);
+  transform-origin: var(--transform-origin, top center);
+  transition: opacity 150ms ease-out, transform 150ms ease-out;
+}
+.panel[data-state="closed"] {
+  opacity: 0;
+  transform: scale(0.95);
+  pointer-events: none;
+}
+.panel[data-state="open"] {
+  opacity: 1;
+  transform: scale(1);
+}
+.panel:focus { outline: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  .card-hover, .panel, .progress-bar { transition-duration: 0.01ms; }
+  .progress-bar[data-indeterminate="true"] { animation: none; }
+}
+
+/* Scan panel: folder list + run control */
+.scan-panel { padding: 1.25rem; display: flex; flex-direction: column; gap: 1rem; }
+.scan-panel .folder-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius);
+  background: hsl(var(--muted) / 0.5);
+  font-size: 0.8125rem;
+}
+.scan-panel .folder-row .btn-ghost { height: 1.75rem; padding: 0 0.5rem; font-size: 0.75rem; }
+.scan-panel .dup-group { display: flex; flex-direction: column; }
+.scan-panel .dup-group + .dup-group { border-top: 1px solid hsl(var(--border)); }

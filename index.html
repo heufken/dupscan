@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DupScan</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+tailwind.config = {
+  darkMode: 'class',
+  theme: {
+    extend: {
+      colors: {
+        background: 'hsl(var(--background))', foreground: 'hsl(var(--foreground))',
+        card: { DEFAULT: 'hsl(var(--card))', foreground: 'hsl(var(--card-foreground))' },
+        primary: { DEFAULT: 'hsl(var(--primary))', foreground: 'hsl(var(--primary-foreground))' },
+        secondary: { DEFAULT: 'hsl(var(--secondary))', foreground: 'hsl(var(--secondary-foreground))' },
+        muted: { DEFAULT: 'hsl(var(--muted))', foreground: 'hsl(var(--muted-foreground))' },
+        accent: { DEFAULT: 'hsl(var(--accent))', foreground: 'hsl(var(--accent-foreground))' },
+        success: { DEFAULT: 'hsl(var(--success))', foreground: 'hsl(var(--success-foreground))' },
+        warning: { DEFAULT: 'hsl(var(--warning))', foreground: 'hsl(var(--warning-foreground))' },
+        destructive: { DEFAULT: 'hsl(var(--destructive))', foreground: 'hsl(var(--destructive-foreground))' },
+        border: 'hsl(var(--border))', input: 'hsl(var(--input))', ring: 'hsl(var(--ring))',
+      },
+      borderRadius: { DEFAULT: 'var(--radius)', lg: 'var(--card-radius)' },
+    },
+  },
+};
+</script>
+<link rel="stylesheet" href="design/tokens.css">
+<style type="text/tailwindcss">
+  @layer base { body { @apply bg-background text-foreground antialiased; } }
+</style>
+</head>
+<body class="min-h-screen">
+
+<header class="sticky top-0 z-40 flex items-center justify-between gap-4 px-6 h-14 border-b border-border bg-background/90 backdrop-blur">
+  <div class="flex items-center gap-3 min-w-0">
+    <h1 class="text-lg font-semibold tracking-tight">DupScan</h1>
+    <span id="count-badge" class="badge badge-outline hidden" data-count="0"></span>
+    <span id="freed" class="badge badge-success hidden"></span>
+  </div>
+  <button id="theme" class="btn btn-ghost btn-sm" aria-label="Toggle theme"
+          onclick="toggleTheme()">Theme</button>
+</header>
+
+<main class="max-w-5xl mx-auto p-6 space-y-6">
+
+  <!-- SCAN -->
+  <section class="card scan-panel" id="scan-panel" aria-label="Scan folders">
+    <div class="flex flex-wrap items-center justify-between gap-3">
+      <h2 class="text-sm font-medium text-muted-foreground">Keep folder is never modified. Extras go to the Recycle Bin.</h2>
+      <div class="flex flex-wrap items-center gap-4">
+        <label class="flex items-center gap-2 text-sm cursor-pointer">
+          <input type="checkbox" id="recurse" class="accent-primary" checked> Include subfolders
+        </label>
+        <label class="flex items-center gap-2 text-sm" title="Skip files smaller than this. Empty files are always skipped.">
+          Min size <input type="number" id="minkb" min="0" value="0" class="h-8 w-20 rounded border border-input bg-background px-2 text-sm"> KB
+        </label>
+        <button id="scan" class="btn btn-primary" disabled>Scan</button>
+      </div>
+    </div>
+    <div id="folders" class="flex flex-col gap-2"></div>
+    <div id="progress-wrap" class="hidden">
+      <div class="flex flex-col gap-2">
+        <div class="flex justify-between text-xs text-muted-foreground">
+          <span id="progress-label">Scanning…</span>
+          <span id="progress-pct" class="font-mono"></span>
+        </div>
+        <div class="progress"><div id="progress-bar" class="progress-bar" data-indeterminate="true"></div></div>
+        <button id="cancel" class="btn btn-outline btn-sm self-start">Cancel</button>
+      </div>
+    </div>
+    <div id="error" class="alert alert-destructive hidden" role="alert"></div>
+  </section>
+
+  <!-- OVERVIEW + ACTIONS -->
+  <div id="toolbar" class="card p-3 sticky top-14 z-30 space-y-2 hidden">
+    <div id="bar" class="flex h-2 rounded overflow-hidden bg-muted"></div>
+    <div id="chips" class="flex flex-wrap gap-2"></div>
+    <div class="flex flex-wrap items-center gap-2">
+      <input id="q" type="search" placeholder="Search path or name…" class="h-8 w-52 rounded border border-input bg-background px-2 text-sm">
+      <select id="sort" class="h-8 rounded border border-input bg-background px-2 text-sm" title="Sort groups">
+        <option value="reclaim">Sort: reclaimable</option>
+        <option value="size">Sort: file size</option>
+        <option value="count">Sort: copies</option>
+        <option value="name">Sort: name</option>
+      </select>
+      <span class="text-xs text-muted-foreground ml-auto">Keep</span>
+      <select id="rule" class="h-8 rounded border border-input bg-background px-2 text-sm" title="Used where no copy is protected">
+        <option value="oldest">oldest</option>
+        <option value="newest">newest</option>
+        <option value="shortest">shortest path</option>
+      </select>
+      <button id="autopick" class="btn btn-outline btn-sm">Auto-pick</button>
+      <button id="sel-all" class="btn btn-outline btn-sm">Select all</button>
+      <button id="sel-none" class="btn btn-ghost btn-sm">Clear</button>
+      <button id="trash" class="btn btn-destructive btn-sm" disabled>Delete selected</button>
+    </div>
+  </div>
+
+  <!-- RESULTS -->
+  <section id="results" class="space-y-4" aria-label="Duplicate groups"></section>
+
+  <p id="empty" class="text-center text-sm text-muted-foreground py-16">
+    Choose a keep folder (and optionally a compare folder), then scan. Duplicate groups appear here.
+  </p>
+
+</main>
+
+<!-- VIEWER -->
+<div id="viewer" class="fixed inset-0 z-50 hidden bg-black/70 p-6 grid place-items-center" role="dialog" aria-modal="true">
+  <div class="card p-4 flex flex-col gap-3 max-w-[90vw] max-h-[90vh]">
+    <div class="flex items-center justify-between gap-4">
+      <p id="viewer-title" class="text-sm truncate"></p>
+      <div class="flex gap-2 shrink-0">
+        <button id="viewer-open" class="btn btn-outline btn-sm">Open</button>
+        <button id="viewer-reveal" class="btn btn-outline btn-sm">Show in folder</button>
+        <button id="viewer-close" class="btn btn-outline btn-sm">Close</button>
+      </div>
+    </div>
+    <div id="viewer-body" class="overflow-auto min-h-0 grid place-items-center"></div>
+  </div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (s) => s.replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+const app = {
+  slots: [null, null],       // [keep folder, compare folder]
+  groups: [],                // [{size, cat, files: [{path,url,root,sub,locked}], sec}]
+  selected: new Set(),       // paths marked for the Recycle Bin
+  cards: new Map(),          // path -> card element
+  files: new Map(),          // path -> file record
+  filter: null,              // category name or null
+  sort: 'reclaim',           // key of SORTS
+  q: '',                     // search text, lowercase
+  freed: 0,                  // bytes sent to the Recycle Bin this session
+  viewing: null,             // path open in the viewer
+  multi: false,              // scanned more than one folder
+  event(type, data) {        // called from Python via evaluate_js
+    if (type === 'progress') setProgress(data);
+  },
+};
+window.app = app;
+
+const fmt = (n) => {
+  let u = 'B';
+  for (const unit of ['KB', 'MB', 'GB']) {
+    if (n < 1024) return `${n.toFixed(1)} ${u}`;
+    n /= 1024; u = unit;
+  }
+  return `${n.toFixed(1)} ${u}`;
+};
+const nameOf = (p) => p.split(/[\\/]/).pop();
+const extOf = (p) => { const n = nameOf(p); return n.includes('.') ? n.split('.').pop().toLowerCase() : ''; };
+const showError = (m) => { $('error').textContent = m; $('error').classList.remove('hidden'); scrollTo({ top: 0 }); };
+
+const CATS = {
+  Images: 'jpg jpeg jfif jpe pjpeg png gif webp bmp svg avif ico heic tif tiff',
+  Video: 'mp4 m4v webm mov mkv avi wmv mpg mpeg',
+  Audio: 'mp3 wav flac m4a aac ogg opus wma',
+  Docs: 'pdf doc docx xls xlsx ppt pptx txt md rtf odt csv',
+  Archives: 'zip rar 7z tar gz iso',
+};
+const COLORS = { Images: 'bg-primary', Video: 'bg-success', Audio: 'bg-warning',
+                 Docs: 'bg-accent', Archives: 'bg-secondary', Other: 'bg-muted-foreground' };
+const catOf = (p) => Object.keys(CATS).find(k => CATS[k].split(' ').includes(extOf(p))) || 'Other';
+
+/* ---------- folders ---------- */
+const SLOTS = ['Keep folder', 'Compare folder (optional)'];
+
+function renderFolders() {
+  $('folders').innerHTML = SLOTS.map((label, i) => `
+    <div class="folder-row">
+      <span class="text-xs text-muted-foreground shrink-0 w-48">${label}</span>
+      <span class="truncate flex-1">${app.slots[i] ? esc(app.slots[i]) : '<span class="text-muted-foreground">Not set</span>'}</span>
+      <button class="btn btn-outline btn-sm" onclick="pickFolder(${i})">Choose…</button>
+      ${i && app.slots[i] ? `<button class="btn btn-ghost btn-sm" onclick="clearSlot(${i})" aria-label="Clear compare folder">✕</button>` : ''}
+    </div>`).join('');
+  $('scan').disabled = !app.slots[0];
+}
+
+async function pickFolder(i) {
+  const p = await pywebview.api.pick_folder();
+  if (p) { app.slots[i] = p; renderFolders(); save(); }
+}
+function clearSlot(i) { app.slots[i] = null; renderFolders(); save(); }
+
+/* ---------- progress ---------- */
+function setProgress({ pct, label }) {
+  $('progress-wrap').classList.remove('hidden');
+  $('progress-label').textContent = label;
+  const bar = $('progress-bar');
+  if (pct == null) {
+    bar.dataset.indeterminate = 'true';
+    $('progress-pct').textContent = '';
+  } else {
+    delete bar.dataset.indeterminate;
+    bar.style.width = pct.toFixed(1) + '%';
+    $('progress-pct').textContent = Math.round(pct) + '%';
+  }
+}
+
+/* ---------- scan ---------- */
+$('scan').onclick = async () => {
+  $('error').classList.add('hidden');
+  $('scan').disabled = true;
+  setProgress({ pct: null, label: 'Scanning…' });
+  const roots = [...new Set(app.slots.filter(Boolean))];
+  const res = await pywebview.api.scan(roots, $('recurse').checked, Number($('minkb').value) || 0);
+  $('progress-wrap').classList.add('hidden');
+  $('scan').disabled = false;
+  if (res.cancelled) return;
+  if (res.error) return showError(res.error);
+  app.multi = roots.length > 1;
+  app.filter = null;
+  app.q = $('q').value = '';
+  app.selected.clear();
+  app.groups = res.groups.map(g => ({ ...g, cat: catOf(g.files[0].path) }));
+  $('empty').textContent = 'No duplicates found.';
+  renderResults();
+};
+$('cancel').onclick = () => pywebview.api.cancel();
+
+/* ---------- results ---------- */
+// Videos load their first frame only when scrolled near (<video> has no loading="lazy").
+const io = new IntersectionObserver((entries) => entries.forEach(e => {
+  if (e.isIntersecting) { e.target.src = e.target.dataset.src; io.unobserve(e.target); }
+}), { rootMargin: '300px' });
+
+const extHtml = (ext) =>
+  `<span class="text-lg font-mono font-semibold text-muted-foreground">${esc(ext.toUpperCase() || 'FILE')}</span>`;
+const noPreview = (el) => { const w = el.parentElement; w.innerHTML = extHtml(w.dataset.ext); };
+// ponytail: browser decodes full originals; if huge photos scroll janky, write thumbs to a temp dir and point src there
+
+function preview(f) {
+  const cat = catOf(f.path), url = esc(f.url);
+  if (cat === 'Images')
+    return `<img alt="" src="${url}" loading="lazy" decoding="async" onerror="noPreview(this)" class="w-full h-full object-contain">`;
+  if (cat === 'Video')
+    return `<video data-src="${url}#t=0.5" muted playsinline preload="metadata" onerror="noPreview(this)" class="w-full h-full object-contain"></video>`;
+  return extHtml(extOf(f.path));
+}
+
+function cardHtml(g, f, i) {
+  const extra = i > 0 && !f.locked;
+  const badge = i === 0 ? '<span class="badge badge-success" data-badge>kept</span>'
+    : f.locked ? '<span class="badge badge-outline" data-badge title="In the keep folder, never deleted">protected</span>'
+    : '<span class="badge badge-outline" data-badge>extra</span>';
+  const del = extra ? `<button class="btn btn-destructive btn-sm" data-del="${esc(f.path)}">Delete</button>` : '';
+  const when = f.mtime ? new Date(f.mtime * 1000).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) : '';
+  const where = (app.multi ? `<span class="badge badge-outline">Folder ${f.root + 1}</span> ` : '') + esc(f.sub || '/');
+  return `
+    <div class="card p-3 flex flex-col gap-2 min-w-0" data-role="${i === 0 ? 'kept' : 'dup'}" data-card="${esc(f.path)}"${extra ? ' data-extra' : ''}>
+      <div class="rounded overflow-hidden bg-muted/60 grid place-items-center aspect-square cursor-zoom-in" data-ext="${esc(extOf(f.path))}" data-preview title="Click to open">
+        ${preview(f)}
+      </div>
+      <p class="text-xs truncate" title="${esc(f.path)}">${esc(nameOf(f.path))}</p>
+      <p class="text-xs text-muted-foreground truncate" title="${esc(f.path)}">${where}</p>
+      <p class="text-xs text-muted-foreground font-mono truncate">${fmt(g.size)}${when ? ' · ' + when : ''}</p>
+      <div class="flex items-center justify-between gap-2">${badge}${del}</div>
+    </div>`;
+}
+
+function paintGroup(g) {   // columns, kept path, reclaimable badge; call again after files change
+  const s = g.sec, kept = s.querySelector('[data-kept]');
+  s.querySelector('[data-grid]').style.gridTemplateColumns = `repeat(${g.files.length}, minmax(0, 1fr))`;
+  kept.textContent = kept.title = g.files[0].path;
+  s.querySelector('[data-wasted]').textContent = `${fmt(reclaim(g))} reclaimable`;
+}
+
+function fillGroup(g) {   // (re)build a group's cards
+  const grid = g.sec.querySelector('[data-grid]');
+  grid.innerHTML = g.files.map((f, i) => cardHtml(g, f, i)).join('');
+  grid.querySelectorAll('[data-card]').forEach(c => app.cards.set(c.dataset.card, c));
+  grid.querySelectorAll('video[data-src]').forEach(v => io.observe(v));
+  g.files.forEach(f => app.files.set(f.path, f));
+  paintGroup(g);
+}
+
+function renderResults() {
+  const host = $('results');
+  host.innerHTML = '';
+  app.cards.clear();
+  app.files.clear();
+  app.groups.sort(SORTS[app.sort]);
+  app.groups.forEach((g, gi) => {
+    const sec = document.createElement('section');
+    sec.className = 'card';
+    sec.style.cssText = 'content-visibility:auto;contain-intrinsic-size:auto 300px';
+    sec.innerHTML = `
+      <div class="p-4 pb-0 flex items-center justify-between gap-3">
+        <div class="flex items-center gap-2 min-w-0">
+          <span class="badge badge-outline font-mono" data-num>${gi + 1}</span>
+          <p class="text-sm truncate" data-kept></p>
+        </div>
+        <div class="flex items-center gap-2 shrink-0">
+          <span class="badge badge-warning" data-wasted></span>
+          <button class="btn btn-secondary btn-sm" data-grp>Select extras</button>
+        </div>
+      </div>
+      <div class="p-4 grid gap-3" data-grid></div>`;
+    g.sec = sec;
+    host.appendChild(sec);
+    fillGroup(g);
+  });
+  refreshStats();
+  refreshSelection();
+}
+
+/* ---------- overview + filter ---------- */
+function refreshStats() {
+  const by = {};
+  for (const g of app.groups) {
+    const c = (by[g.cat] ??= { n: 0, w: 0 });
+    c.n++; c.w += reclaim(g);
+  }
+  if (app.filter && !by[app.filter]) app.filter = null;
+  const cats = Object.keys(by);
+  const total = cats.reduce((a, k) => ({ n: a.n + by[k].n, w: a.w + by[k].w }), { n: 0, w: 0 });
+  const chip = (cat, label, s) => `
+    <button class="btn btn-sm ${app.filter === cat ? 'btn-secondary' : 'btn-outline'}" data-cat="${cat ?? ''}">
+      ${cat ? `<span class="inline-block w-2 h-2 rounded-full ${COLORS[cat]}"></span>` : ''}${label} · ${s.n} · ${fmt(s.w)}
+    </button>`;
+  $('chips').innerHTML = chip(null, 'All', total) + cats.map(k => chip(k, k, by[k])).join('');
+  $('bar').innerHTML = cats.map(k =>
+    `<button data-cat="${k}" class="${COLORS[k]} h-full" style="flex:${by[k].w} 0 0%" title="${k}: ${fmt(by[k].w)}"></button>`).join('');
+  for (const g of app.groups) g.sec.classList.toggle('hidden', !shown(g));
+
+  const badge = $('count-badge');
+  badge.textContent = `${app.groups.length} group${app.groups.length === 1 ? '' : 's'}`;
+  badge.classList.toggle('hidden', !app.groups.length);
+  $('toolbar').classList.toggle('hidden', !app.groups.length);
+  $('empty').classList.toggle('hidden', !!app.groups.length);
+}
+
+/* ---------- selection ---------- */
+const selectable = (g) => g.files.slice(1).filter(f => !f.locked);   // kept + protected files never qualify
+const reclaim = (g) => g.size * selectable(g).length;   // bytes this group can actually free
+const shown = (g) => (!app.filter || g.cat === app.filter) && g.hit !== false;   // type chip + search
+const visible = () => app.groups.filter(shown);
+const SORTS = {
+  reclaim: (a, b) => reclaim(b) - reclaim(a),
+  size: (a, b) => b.size - a.size,
+  count: (a, b) => b.files.length - a.files.length,
+  name: (a, b) => nameOf(a.files[0].path).localeCompare(nameOf(b.files[0].path)),
+};
+
+function paintCard(el, on) {
+  el.classList.toggle('ring-2', on);
+  el.classList.toggle('ring-destructive', on);
+  const b = el.querySelector('[data-badge]');
+  b.textContent = on ? 'will delete' : 'extra';
+  b.className = on ? 'badge bg-destructive text-destructive-foreground' : 'badge badge-outline';
+}
+
+function select(paths) {   // replace the selection
+  app.selected = new Set(paths);
+  for (const [p, el] of app.cards) if ('extra' in el.dataset) paintCard(el, app.selected.has(p));
+  refreshSelection();
+}
+
+function refreshSelection() {
+  let bytes = 0;
+  for (const g of app.groups) for (const f of g.files) if (app.selected.has(f.path)) bytes += g.size;
+  const n = app.selected.size;
+  $('trash').disabled = !n;
+  $('trash').textContent = n ? `Delete ${n} selected · ${fmt(bytes)}` : 'Delete selected';
+}
+
+$('sel-all').onclick = () => select(visible().flatMap(g => selectable(g).map(f => f.path)));
+$('sel-none').onclick = () => select([]);
+
+function sortGroups() {
+  app.groups.sort(SORTS[app.sort]);
+  app.groups.forEach((g, i) => {
+    $('results').appendChild(g.sec);   // moves the node, no thumbnail reload
+    g.sec.querySelector('[data-num]').textContent = i + 1;
+  });
+}
+$('sort').onchange = (e) => { app.sort = e.target.value; sortGroups(); };
+let qTimer;   // debounced: large result sets re-filter every keystroke otherwise
+$('q').oninput = (e) => { clearTimeout(qTimer); qTimer = setTimeout(() => {
+  app.q = e.target.value.trim().toLowerCase();
+  for (const g of app.groups) g.hit = !app.q || g.files.some(f => f.path.toLowerCase().includes(app.q));
+  refreshStats();
+}, 150); };
+
+const RULES = {   // which copy to keep
+  oldest: (a, b) => a.mtime - b.mtime,
+  newest: (a, b) => b.mtime - a.mtime,
+  shortest: (a, b) => a.path.length - b.path.length,
+};
+$('autopick').onclick = () => {   // groups with a protected copy keep it, so the rule skips them
+  const gs = visible();
+  for (const g of gs) if (!g.files.some(f => f.locked)) { g.files.sort(RULES[$('rule').value]); fillGroup(g); }
+  select(gs.flatMap(g => selectable(g).map(f => f.path)));
+};
+
+function removeFiles(paths) {
+  const gone = new Set(paths);
+  for (const g of app.groups) for (const f of g.files) if (gone.has(f.path)) app.freed += g.size;
+  $('freed').textContent = `Freed ${fmt(app.freed)}`;
+  $('freed').classList.toggle('hidden', !app.freed);
+  for (const p of gone) { app.cards.get(p)?.remove(); app.cards.delete(p); app.files.delete(p); app.selected.delete(p); }
+  for (const g of app.groups) {
+    const before = g.files.length;
+    g.files = g.files.filter(f => !gone.has(f.path));
+    if (g.files.length === before) continue;
+    if (g.files.length > 1) paintGroup(g); else g.sec.remove();
+  }
+  app.groups = app.groups.filter(g => g.files.length > 1);
+  refreshStats();
+  refreshSelection();
+}
+
+async function trash(paths) {   // goes to the Recycle Bin, so no confirm for a single file
+  const res = await pywebview.api.trash(paths);
+  removeFiles(res.removed || []);
+  if (res.error) showError(res.error);
+}
+
+$('trash').onclick = async () => {
+  const paths = [...app.selected];
+  if (!paths.length || !confirm(`Move ${paths.length} file${paths.length === 1 ? '' : 's'} to the Recycle Bin?`)) return;
+  $('trash').disabled = true;
+  await trash(paths);
+};
+
+/* ---------- viewer ---------- */
+const viewerFail = () => { $('viewer-body').innerHTML = '<span class="text-sm text-muted-foreground">No preview available for this file.</span>'; };
+const closeViewer = () => { app.viewing = null; $('viewer').classList.add('hidden'); $('viewer-body').innerHTML = ''; };  // emptying stops playback
+
+async function openViewer(path) {
+  const body = $('viewer-body'), url = esc(app.files.get(path).url), cat = catOf(path);
+  app.viewing = path;
+  $('viewer-title').textContent = path;
+  $('viewer-title').title = path;
+  body.innerHTML = '<span class="text-sm text-muted-foreground">Loading…</span>';
+  $('viewer').classList.remove('hidden');
+  const fit = 'max-w-full max-h-[75vh] object-contain';
+  if (cat === 'Images') body.innerHTML = `<img src="${url}" onerror="viewerFail()" class="${fit}">`;
+  else if (cat === 'Video') body.innerHTML = `<video src="${url}" controls onerror="viewerFail()" class="${fit}"></video>`;
+  else if (cat === 'Audio') body.innerHTML = `<audio src="${url}" controls onerror="viewerFail()"></audio>`;
+  else if (extOf(path) === 'pdf') body.innerHTML = `<embed src="${url}" type="application/pdf" class="w-[80vw] h-[75vh]">`;
+  else {
+    const r = await pywebview.api.peek(path);   // text excerpt or zip/tar listing, via Python
+    if ($('viewer').classList.contains('hidden')) return;   // closed while loading
+    if (!r) return viewerFail();
+    const rows = r.kind === 'text' ? esc(r.body) : r.items.map(esc).join('\n');
+    body.innerHTML = `<pre class="text-xs font-mono whitespace-pre-wrap w-[70vw] max-h-[70vh] overflow-auto">${rows}${r.more ? '\n…' : ''}</pre>`;
+  }
+}
+$('viewer-close').onclick = closeViewer;
+$('viewer-reveal').onclick = () => app.viewing && pywebview.api.reveal(app.viewing);
+$('viewer-open').onclick = () => app.viewing && pywebview.api.open_file(app.viewing);
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') closeViewer();
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f') { e.preventDefault(); $('q').focus(); }
+});
+
+document.addEventListener('click', async (e) => {
+  if (e.target.id === 'viewer') return closeViewer();   // backdrop
+  const cat = e.target.closest('[data-cat]');   // chips + overview bar segments
+  if (cat) { app.filter = cat.dataset.cat || null; select([]); refreshStats(); return; }
+  const del = e.target.closest('button[data-del]');
+  if (del) { del.disabled = true; await trash([del.dataset.del]); del.disabled = false; return; }
+  const grp = e.target.closest('button[data-grp]');
+  if (grp) {
+    const g = app.groups.find(g => g.sec === grp.closest('section'));
+    const ps = selectable(g).map(f => f.path);
+    const all = ps.every(p => app.selected.has(p));
+    select(all ? [...app.selected].filter(p => !ps.includes(p)) : [...app.selected, ...ps]);
+    return;
+  }
+  const pv = e.target.closest('[data-preview]');
+  if (pv) openViewer(pv.closest('[data-card]').dataset.card);
+});
+
+/* ---------- settings (saved by Python in ~/.dupscan.json) ---------- */
+const save = () => pywebview.api.save_settings({
+  slots: app.slots, recurse: $('recurse').checked, minKb: Number($('minkb').value) || 0,
+  dark: document.documentElement.classList.contains('dark'),
+});
+function toggleTheme() { document.documentElement.classList.toggle('dark'); save(); }
+$('recurse').onchange = $('minkb').onchange = save;
+window.addEventListener('pywebviewready', async () => {
+  const s = await pywebview.api.load_settings();
+  app.slots = [s.slots?.[0] ?? null, s.slots?.[1] ?? null];
+  $('recurse').checked = s.recurse ?? true;
+  $('minkb').value = s.minKb ?? 0;
+  document.documentElement.classList.toggle('dark', !!s.dark);
+  renderFolders();
+});
+
+renderFolders();
+</script>
+</body>
+</html>
